@@ -1,0 +1,703 @@
+## Descritivas RN
+
+---
+title: "Descritivas RN"
+author: "JM"
+date: "2/10/2023"
+output: 
+  pdf_document:
+    keep_tex: true
+---
+
+## Bibliotecas:
+
+Bibliotecas usadas no projeto.
+
+```{r, echo=FALSE}
+
+library(readxl)
+library(tidyverse)
+library(stringr)
+library(stringi)
+library(readstata13)
+library(lubridate)
+library(foreign)
+library(gt)
+library(reshape2) 
+library(janitor)
+library(dplyr)
+library(ggplot2)
+
+```
+
+## Path dos arquivos:
+
+Caminhos dos aquivos :
+
+```{r, echo=FALSE}
+## Arquivos JM
+path <- "~/programacao/Vital Strategies/R/roteiro_analise/datasets"
+
+```
+
+## Tabela 1
+
+· Table 1: Número de registros no SIM por ano (2010-2022)
+
+```{r, echo=FALSE}
+# Tabela 1:(SIM) Tabela com o ano nas linhas e o sexo nas colunas 
+
+#Criar nova coluna "ano_obito"
+sim_anon <- sim_anon %>%
+  mutate(ano_obito = substr(dt_obito, nchar(dt_obito) - 3, nchar(dt_obito)))
+
+
+tab_sim1 <- as.data.frame(table(sim_anon$ano_obito,sim_anon$sg_sexo)) %>% 
+  spread(key=Var2,valu=Freq) %>%
+  rename(ano_obito=Var1) %>%
+  mutate(Total=F+I+M)
+tot_tp <- tab_sim1[,-1] %>%
+  summarise(across(everything(), sum)) %>%
+  mutate(ano="Total")
+tab_sim1 <- bind_rows(tab_sim1,tot_tp) %>%
+  select(ano_obito,F,M,I,Total)
+proportions_table <- tab_sim1 %>%
+  mutate(round(across(where(is.numeric), ~ . / Total)*100,1)) %>%
+  select(-Total)
+
+tab_sim1 <- merge(tab_sim1,proportions_table,by = "ano_obito")
+
+names(tab_sim1) <- c("Ano", "Feminino (n)", "Masculino (n)", "Ign (n)", "Total", "F (%)", "M (%)", "Ign (%)")
+
+
+tab_sim1 <- tab_sim1 %>%
+  select(Ano,`Feminino (n)`,`F (%)`,`Masculino (n)`,`M (%)`,Total)
+
+print(tab_sim1)
+```
+
+## Tabela 2
+
+· Número de registros no SIH por ano e por sexo (2015-2021)
+
+```{r, echo=FALSE}
+# Tabela 2: (SIH) Mesma mudança feita na tabela 1
+sih_anon <- sih_anon %>%
+  mutate(sg_sexo_numeric = ifelse(sg_sexo == 'M', 1, ifelse(sg_sexo == 'F', 2, NA)))
+
+tab_sih1 <- as.data.frame(table(sih_anon$ano, sih_anon$sg_sexo_numeric)) %>% 
+  spread(key = Var2, value = Freq) %>%
+  rename(ano = Var1) %>%
+  mutate(F = `1`, I = NA, M = `2`, Total = `1` + `2`) 
+tot_tp <- tab_sih1[,-1] %>%
+  summarise(across(everything(), sum)) %>%
+  mutate(ano="Total")
+tab_sih1 <- bind_rows(tab_sih1,tot_tp) %>%
+  select(ano,F,M,I,Total)
+proportions_table <- tab_sih1 %>%
+  mutate(round(across(where(is.numeric), ~ . / Total)*100,1)) %>%
+  select(-Total)
+
+tab_sih1 <- merge(tab_sih1,proportions_table,by = "ano")
+
+names(tab_sih1) <- c("Ano", "Feminino (n)", "Masculino (n)", "Ign (n)", "Total", "F (%)", "M (%)", "Ign (%)")
+
+
+tab_sih1 <- tab_sih1 %>%
+  select(Ano,`Feminino (n)`,`F (%)`,`Masculino (n)`,`M (%)`,Total)
+
+print(tab_sih1)
+```
+
+## Tabela 3
+
+· Periodo médio de internação segundo faixa etária (SIH, 2015-2021) Fazer segundo sexo, inserindo uma coluna de n. (não encontrei o periodo de internação)
+
+```{r, echo=FALSE}
+# Tabelas 3: transformar em uma tabela única tendo a faixa etária na linha e 
+# os sexos na coluna.(SIH (n=número de registros)
+
+#Gerando coluna faixa etaria
+sih_anon <- sih_anon %>%
+  mutate( cd_idade=as.integer(cd_idade),
+          ds_raca=case_when(cd_raca=="1"~"BRANCA",
+                            cd_raca=="2"~"PRETA",
+                            cd_raca=="3"~"PARDA",
+                            cd_raca=="4"~"AMARELA",
+                            cd_raca=="5"~"INDIGENA",
+                            T~"IGNORADA"),
+          faixa_etaria=case_when(cd_idade<10~"0 a 9 anos",
+                                 cd_idade>09&cd_idade<20~"10 a 19 anos",
+                                 cd_idade>19&cd_idade<30~"20 a 29 anos",
+                                 cd_idade>29&cd_idade<60~"30 a 59 anos",
+                                 cd_idade>59~"60+",
+                                 T~as.character(cd_idade)),
+          dias_int=ymd(dt_saida)-ymd(dt_internacao))
+
+###################################################
+#Criando função
+sih_anon <- sih_anon %>%
+  mutate(sg_sexo_numeric = ifelse(sg_sexo == 'M', 1, ifelse(sg_sexo == 'F', 2, NA)))
+
+tab_sih4 <- as.data.frame(table( sih_anon$faixa_etaria, sih_anon$sg_sexo_numeric)) %>% 
+  spread(key = Var2, value = Freq) %>%
+  rename(faixa_etaria = Var1) %>%
+  mutate(F = `1`, I = NA, M = `2`, Total = `1` + `2`) 
+
+tot_tp <- tab_sih4 %>%
+  select(-faixa_etaria) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>%
+  mutate(faixa_etaria = "Total")
+tab_sih4 <- bind_rows(tab_sih4,tot_tp) %>%
+  select(faixa_etaria,F,M,I,Total)
+proportions_table <- tab_sih4 %>%
+  mutate(round(across(where(is.numeric), ~ . / Total)*100,1)) %>%
+  select(-Total)
+
+tab_sih4 <- merge(tab_sih4,proportions_table,by = "faixa_etaria")
+
+names(tab_sih4) <- c("Faixa etária", "Feminino (n)", "Masculino (n)", "Ign (n)", "Total", "F (%)", "M (%)", "Ign (%)")
+
+
+tab_sih4 <- tab_sih4 %>%
+  select(`Faixa etária`, `Feminino (n)`, `F (%)`, `Masculino (n)`, `M (%)`, Total)
+
+print(tab_sih4)
+```
+
+## Tabela 4
+
+· Periodo medio de internações = F (não encontrei o periodo de internação).
+
+```{r, echo=FALSE}
+
+#Gerando coluna faixa etaria
+sih_anon <- sih_anon %>%
+  mutate( cd_idade=as.integer(cd_idade),
+          ds_raca=case_when(cd_raca=="1"~"BRANCA",
+                            cd_raca=="2"~"PRETA",
+                            cd_raca=="3"~"PARDA",
+                            cd_raca=="4"~"AMARELA",
+                            cd_raca=="5"~"INDIGENA",
+                            T~"IGNORADA"),
+          faixa_etaria=case_when(cd_idade<10~"0 a 9 anos",
+                                 cd_idade>09&cd_idade<20~"10 a 19 anos",
+                                 cd_idade>19&cd_idade<30~"20 a 29 anos",
+                                 cd_idade>29&cd_idade<60~"30 a 59 anos",
+                                 cd_idade>59~"60+",
+                                 T~as.character(cd_idade)),
+          dias_int=ymd(dt_saida)-ymd(dt_internacao))
+
+
+# Tabelas 4: transformar em uma tabela única tendo a faixa etária na linha e 
+# os sexos na coluna.(SIH (n=número de registros)
+
+# Filtrar as colunas de gênero feminino (F ou Feminino) na tabela tab_sih4
+tab_sih4_feminino <- tab_sih4 %>%
+  select(`Faixa etária`, `Feminino (n)`, `F (%)`)
+
+# Se desejar, você pode renomear as colunas para remover o prefixo "Feminino"
+names(tab_sih4_feminino) <- c("Faixa etária", "Total (n)", "Total (%)")
+
+print(tab_sih4_feminino)
+```
+
+## Tabela 5
+
+Periodo médio de internação segundo raca_cor (SIH, 2015-2021) (não encontrei o periodo de internação).
+
+```{r, echo=FALSE}
+# Tabelas 5: 
+sih_anon <- sih_anon %>%
+  mutate( cd_idade=as.integer(cd_idade),
+          ds_raca=case_when(cd_raca=="1"~"BRANCA",
+                            cd_raca=="2"~"PRETA",
+                            cd_raca=="3"~"PARDA",
+                            cd_raca=="4"~"AMARELA",
+                            cd_raca=="5"~"INDIGENA",
+                            T~"IGNORADA"))
+
+tab_sih_raca <- as.data.frame(table(sih_anon$ds_raca, sih_anon$sg_sexo)) %>%
+  spread(key = Var2, value = Freq) %>%
+  rename(ds_raca = Var1) %>%
+  mutate(across(c("F", "M"), as.numeric, .names = "Total_{.col}")) %>%
+  mutate(Total = Total_F + Total_M)
+tot_tp <- tab_sih_raca[,-1] %>%
+  summarise(across(everything(), sum)) %>%
+  mutate(ds_raca="Total")
+tab_sim1 <- bind_rows(tab_sih_raca, tot_tp) %>%
+  select(ds_raca, F, M, Total)
+proportions_table <- tab_sih_raca %>%
+  mutate(round(across(where(is.numeric), ~ . / Total)*100,1)) %>%
+  select(-Total)
+
+tab_sih_raca <- merge(tab_sim1,proportions_table,by = "ds_raca")
+
+names(tab_sih_raca) <- c("Raca", "Feminino (n)", "Masculino (n)", "Ign (n)", "Total", "F (%)", "M (%)", "Ign (%)")
+
+
+tab_sih_raca <- tab_sih_raca %>%
+  select(Raca,`Feminino (n)`,`F (%)`,`Masculino (n)`,`M (%)`,Total)
+
+print(tab_sih_raca)
+```
+
+## Tabela 6
+
+Periodo médio de internação de mulheres por raça/cor (SIH, 2015-2021)
+
+```{r, echo=FALSE}
+
+# Filtrando sg_sexo = F
+sih_anon_f <- sih_anon %>%
+  filter(sg_sexo == "F")
+
+# Criando a tabela de frequência
+tab_sih_raca <- sih_anon_f %>%
+  mutate(
+    cd_idade = as.integer(cd_idade),
+    ds_raca = case_when(
+      cd_raca == "1" ~ "BRANCA",
+      cd_raca == "2" ~ "PRETA",
+      cd_raca == "3" ~ "PARDA",
+      cd_raca == "4" ~ "AMARELA",
+      cd_raca == "5" ~ "INDIGENA",
+      TRUE ~ "IGNORADA"
+    )
+  ) %>%
+  group_by(ds_raca) %>%
+  summarise(
+    `Feminino (n)` = n(),
+    `F (%)` = (`Feminino (n)` / nrow(sih_anon_f)) * 100,
+    Total = nrow(sih_anon_f)
+  ) %>%
+  mutate(ds_raca = factor(ds_raca, levels = c("BRANCA", "PRETA", "PARDA", "AMARELA", "INDIGENA", "IGNORADA")))
+
+print(tab_sih_raca)
+```
+
+## Tab / Gráfico 9
+
+Total de notificações por ano no SINAN de 2010 a 2022.
+
+```{r, echo=FALSE}
+#Grafico tabela 9
+
+# Filtrando por sexo masculino (M) e feminino (F)
+sinan_anon <- sinan_anon %>%
+  filter(sg_sexo %in% c("M", "F"))
+
+# Criar uma nova coluna com o ano e mês da data de sinal dos primeiros sintomas
+casos_sinan <- sinan_anon %>%
+  mutate(ANO_MES = paste0(format(as.Date(dt_notific), '%Y-%m'), '-01'))
+casos_sinan$ANO_MES <- as.Date(casos_sinan$ANO_MES)
+
+# Agrupar os casos por sexo, ano e mês e contar o número de casos em cada período
+serie_historica <- casos_sinan %>%
+  filter(dt_notific > "2010-01-01") %>%
+  group_by(sg_sexo, ANO_MES) %>%
+  summarize(Casos_Notificados = n())
+
+# Extrair o ano da coluna ANO_MES e criar uma nova coluna chamada "Ano"
+serie_historica <- serie_historica %>%
+  mutate(Ano = lubridate::year(ANO_MES))
+
+# Agrupar os dados por sexo, ano e some os valores de Casos_Notificados
+serie_historica <- serie_historica %>%
+  group_by(sg_sexo, Ano) %>%
+  summarize(Total_Casos_Notificados = sum(Casos_Notificados))
+
+# Plot gráfico de série histórica dos casos notificados por ano e sexo
+ggplot(serie_historica, aes(x = Ano, y = Total_Casos_Notificados, color = sg_sexo)) +
+  geom_line() +
+  xlab("Ano") +
+  ylab("Casos Notificados") +
+  ggtitle("Série Histórica de Casos de Violência por Sexo")
+```
+
+## Tabela 10
+
+Total de notificações por sexo segundo lessão autoprovocada. SINAN de 2010 a 2022.
+
+```{r, echo=FALSE}
+#Tabela 10
+
+sinan_anon <- sinan_anon %>%
+  mutate( les_autop=as.integer(les_autop),
+          les_autop=case_when(les_autop=="1"~"Sim",
+                              les_autop=="2"~"Não",
+                              les_autop=="9"~"Indefinido",
+                              les_autop=="8"~"Não se aplica"))
+
+tab_2 <- function(df, var_row, var_col, pct = FALSE){
+  df <- df %>%
+    dplyr::group_by(
+      {{var_row}},
+      {{var_col}}
+    ) %>%
+    summarise(
+      contagem = n(),
+      .groups = 'drop'
+    ) %>%
+    pivot_wider(
+      names_from = {{var_col}},
+      values_from = c(contagem),
+      values_fill = 0
+    ) %>%
+    adorn_totals("col") %>%
+    arrange(-Total)
+  if (pct) {
+    df <- df %>%
+      filter(
+        {{var_row}} != 'Total'
+      ) %>%
+      mutate(
+        across(
+          where(is.numeric)
+        )
+      ) %>%
+      adorn_totals("row", name = "Total")
+  }
+  return(as.data.frame(df))
+}
+
+tab_2(sinan_anon, les_autop, sg_sexo, pct=TRUE)
+tab_sinan_sex <- tab_2(sinan_anon, les_autop, sg_sexo, pct=TRUE)
+```
+
+## Tabela 11
+
+Total de notificações por raça cor (SINAN, 2010-2022).
+
+```{r, echo=FALSE}
+#Tabela 11 filtrar por raca
+
+# Gerando coluna faixa etária
+sinan_anon <- sinan_anon %>%
+  mutate(
+    idade = as.integer(cd_idade),
+    cd_raca = case_when(
+      cd_raca == "1" ~ "Branca",
+      cd_raca == "2" ~ "Preta",
+      cd_raca == "3" ~ "Parda",
+      cd_raca == "4" ~ "Amarela",
+      cd_raca == "5" ~ "Indígena",
+      TRUE ~ "Ignorada"
+    )
+  )
+
+# Criando uma tabela de contagem de casos por raça
+tabela_contagem <- sinan_anon %>%
+  group_by(cd_raca) %>%
+  summarize(
+    Casos = n(),
+    Percentual = n() / nrow(sinan_anon) * 100
+  )
+
+# Renomeando as colunas
+colnames(tabela_contagem) <- c("Raça", "Número de Casos", "Percentual (%)")
+
+print(tabela_contagem)
+```
+
+## Tabela 12
+
+·Total de notificações de mulheres por raça cor (SINAN, 2010-2022)
+
+```{r, echo=FALSE}
+# Filtrando sg_sexo = F
+sinan_anon <- sinan_anon %>%
+  filter(sg_sexo == "F")
+
+# Criando a tabela de frequência
+tab_sinan_raca <- sih_anon %>%
+  mutate(
+    cd_idade = as.integer(cd_idade),
+    ds_raca = case_when(
+      cd_raca == "1" ~ "BRANCA",
+      cd_raca == "2" ~ "PRETA",
+      cd_raca == "3" ~ "PARDA",
+      cd_raca == "4" ~ "AMARELA",
+      cd_raca == "5" ~ "INDIGENA",
+      TRUE ~ "IGNORADA"
+    )
+  ) %>%
+  group_by(ds_raca) %>%
+  summarise(
+    `Feminino (n)` = n(),
+    `F (%)` = (`Feminino (n)` / nrow(sih_anon)) * 100,
+    Total = nrow(sih_anon)
+  ) %>%
+  mutate(ds_raca = factor(ds_raca, levels = c("BRANCA", "PRETA", "PARDA", "AMARELA", "INDIGENA", "IGNORADA")))
+
+print(tab_sinan_raca)
+
+```
+
+## Tabela 13 - 15
+
+Total de notificações do sexo feminino por ano segundo faixa etária. SINAN violência,2010 a 2022 Substituir ANO por raça cor.
+
+```{r, echo=FALSE}
+
+tab_2 <- function(df, var_row, var_col, pct = FALSE){
+  df <- df %>%
+    dplyr::group_by(
+      {{var_row}},
+      {{var_col}}
+    ) %>%
+    summarise(
+      contagem = n(),
+      .groups = 'drop'
+    ) %>%
+    pivot_wider(
+      names_from = {{var_col}},
+      values_from = c(contagem),
+      values_fill = 0
+    ) %>%
+    adorn_totals("col") %>%
+    arrange(-Total)
+  if (pct) {
+    df <- df %>%
+      filter(
+        {{var_row}} != 'Total'
+      ) %>%
+      mutate(
+        across(
+          where(is.numeric),
+          ~round((. / sum(.)) * 100, 1)
+        )
+      ) %>%
+      adorn_totals("row", name = "Total")
+  }
+  return(as.data.frame(df))
+}
+
+tab_2(sinan_anon, cd_raca, faixa_etaria, pct=TRUE)
+
+tab_ano_sinan <- tab_2(sinan_anon, cd_raca, faixa_etaria, pct=TRUE)  
+```
+
+## Tabela 14 - 16
+
+Proporção de notificações do sexo feminino por ano segundo faixa etária. SINAN-violência,2010 a 2022 Substituir ANO por raça cor.
+
+```{r, echo=FALSE}
+#Tabela 14 - 16
+# criando coluna cd_idade_nova
+sinan_anon <- sinan_anon %>%
+  mutate(cd_idade_nova = substr(cd_idade, 3, nchar(cd_idade)))
+#Gerando coluna faixa etaria
+sinan_anon <- sinan_anon %>%
+  mutate(
+    faixa_etaria = case_when(
+      cd_idade_nova < 10 ~ "0 a 9 anos",
+      cd_idade_nova >= 10 & cd_idade_nova < 20 ~ "10 a 19 anos",
+      cd_idade_nova >= 20 & cd_idade_nova < 30 ~ "20 a 29 anos",
+      cd_idade_nova >= 30 & cd_idade_nova < 60 ~ "30 a 59 anos",
+      cd_idade_nova >= 60 ~ "60+",
+      TRUE ~ as.character(cd_idade_nova)
+    ))
+
+
+tab_2 <- function(df, var_row, var_col, pct = FALSE){
+  df <- df %>%
+    dplyr::group_by(
+      {{var_row}},
+      {{var_col}}
+    ) %>%
+    summarise(
+      contagem = n(),
+      .groups = 'drop'
+    ) %>%
+    pivot_wider(
+      names_from = {{var_col}},
+      values_from = c(contagem),
+      values_fill = 0
+    ) %>%
+    adorn_totals("col") %>%
+    arrange(-Total)
+  if (pct) {
+    df <- df %>%
+      filter(
+        {{var_row}} != 'Total'
+      ) %>%
+      mutate(
+        across(
+          where(is.numeric),
+          ~round((. / sum(.)) * 100, 1)
+        )
+      ) %>%
+      adorn_totals("row", name = "Total")
+  }
+  return(as.data.frame(df))
+}
+
+tab_ano <- tab_2(sinan_anon, ano, faixa_etaria, pct=TRUE)
+
+# Ordenar a tabela pelo ano
+tab_ano <- tab_ano %>%
+  arrange(ano)
+
+print(tab_ano)
+```
+
+```{r, echo=FALSE}
+```
+
+## Tabela 18
+
+Colocar a apenas a proporção (sendo o denominador o total da idade) e a última linha um n.
+
+```{r, echo=FALSE}
+#Tabela 18
+
+#Gerando coluna faixa etaria
+df_linkada_all <- df_linkada_all %>%
+  mutate( idade=as.integer(idade),
+          cd_raca=case_when(cd_raca=="1"~"BRANCA",
+                            cd_raca=="2"~"PRETA",
+                            cd_raca=="3"~"PARDA",
+                            cd_raca=="4"~"AMARELA",
+                            cd_raca=="5"~"INDIGENA",
+                            T~"IGNORADA"),
+          faixa_etaria=case_when(idade<10~"0 a 9 anos",
+                                 idade>09&idade<20~"10 a 19 anos",
+                                 idade>19&idade<30~"20 a 29 anos",
+                                 idade>29&idade<60~"30 a 59 anos",
+                                 idade>59~"60+",
+                                 T~as.character(idade)),
+          dias_int=ymd(dt_saida)-ymd(dt_internacao))
+
+###################################################
+#Criando função
+df_linkada_all <- df_linkada_all %>%
+  mutate(sg_sexo_numeric = ifelse(sg_sexo == 'M', 1, ifelse(sg_sexo == 'F', 2, NA)))
+
+tab_link_sinan <- as.data.frame(table( df_linkada_all$faixa_etaria, df_linkada_all$sg_sexo_numeric)) %>% 
+  spread(key = Var2, value = Freq) %>%
+  rename(faixa_etaria = Var1) %>%
+  mutate(F = `1`, I = NA, M = `2`, Total = `1` + `2`) 
+
+tot_tp <- tab_link_sinan %>%
+  select(-faixa_etaria) %>%
+  summarise(across(where(is.numeric), sum, na.rm = TRUE)) %>%
+  mutate(faixa_etaria = "Total")
+tab_link_sinan <- bind_rows(tab_link_sinan,tot_tp) %>%
+  select(faixa_etaria,F,M,I,Total)
+proportions_table <- tab_link_sinan %>%
+  mutate(round(across(where(is.numeric), ~ . / Total)*100,1)) %>%
+  select(-Total)
+
+tab_link_sinan <- merge(tab_link_sinan,proportions_table,by = "faixa_etaria")
+
+names(tab_link_sinan) <- c("Faixa_etaria", "Feminino (n)", "Masculino (n)", "Ign (n)", "Total", "F (%)", "M (%)", "Ign (%)")
+
+
+tab_link_sinan2 <- tab_link_sinan %>%
+  select(Faixa_etaria, `Feminino (n)`, `F (%)`, `Masculino (n)`, `M (%)`, Total)
+
+print(tab_link_sinan2)
+
+```
+
+## Tabela 19
+
+Colocar a apenas a proporção (sendo o denominador o total da idade) e a última linha um n.
+
+```{r, echo=FALSE}
+#Tabela 19
+
+# Transformando coluna ano em character
+df_linkada_all$ano <- as.character(df_linkada_all$ano)
+
+tab_2 <- function(df, var_row, var_col, pct = FALSE){
+  df <- df %>%
+    dplyr::group_by(
+      {{var_row}},
+      {{var_col}}
+    ) %>%
+    summarise(
+      contagem = n(),
+      .groups = 'drop'
+    ) %>%
+    pivot_wider(
+      names_from = {{var_col}},
+      values_from = c(contagem),
+      values_fill = 0
+    ) %>%
+    adorn_totals("col") %>%
+    arrange(-Total)
+  if (pct) {
+    df <- df %>%
+      filter(
+        {{var_row}} != 'Total'
+      ) %>%
+      mutate(
+        across(
+          where(is.numeric),
+          ~round((. / sum(.)) * 100, 1)
+        )
+      ) %>%
+      adorn_totals("row", name = "Total")
+  }
+  return(as.data.frame(df))
+}
+
+tab_2(df_linkada_all, ano, faixa_etaria, pct=TRUE)
+tab_ano <- tab_2(df_linkada_all, ano, faixa_etaria, pct=TRUE)
+
+# Ordenar a tabela pelo ano
+tab_ano <- tab_ano %>%
+  arrange(ano)
+
+```
+
+## Tabela 20
+
+Colocar a apenas a proporção (sendo o denominador o total da idade) e a última linha um n.
+
+```{r, echo=FALSE}
+#Tabela 20
+
+tab_2 <- function(df, var_row, var_col, pct = FALSE){
+  df <- df %>%
+    dplyr::group_by(
+      {{var_row}},
+      {{var_col}}
+    ) %>%
+    summarise(
+      contagem = n(),
+      .groups = 'drop'
+    ) %>%
+    pivot_wider(
+      names_from = {{var_col}},
+      values_from = c(contagem),
+      values_fill = 0
+    ) %>%
+    adorn_totals("col") %>%
+    arrange(-Total)
+  if (pct) {
+    df <- df %>%
+      filter(
+        {{var_row}} != 'Total'
+      ) %>%
+      mutate(
+        across(
+          where(is.numeric),
+          ~round((. / sum(.)) * 100, 1)
+        )
+      ) %>%
+      adorn_totals("row", name = "Total")
+  }
+  return(as.data.frame(df))
+}
+
+tab_2(df_linkada_all, ano, faixa_etaria, pct=TRUE)
+tab_ano <- tab_2(df_linkada_all, ano, faixa_etaria, pct=TRUE)
+
+# Ordenar a tabela pelo ano
+tab_ano <- tab_ano %>%
+  arrange(ano)
+
+```
